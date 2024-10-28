@@ -69,8 +69,8 @@ async fn verify_handler(
     let verification_data = VerificationData {
         proving_system: ProvingSystemId::Groth16Bn254,
         proof: req.proof,
-        pub_input: Some(req.pub_input),
-        verification_key: Some(req.verification_key),
+        pub_input: req.pub_input,
+        verification_key: req.verification_key,
         vm_program_code: None,
         proof_generator_addr: wallet.address(),
     };
@@ -116,55 +116,18 @@ async fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
     use actix_web::{test, web, App};
-    // use base64::{engine::general_purpose, Engine as _};
-    use mockall::mock;
-    use mockall::predicate::*;
-
-    // What We're Testing:
-    // - The HTTP endpoint is working correctly
-    // - The service can handle JSON requests
-    // - The service properly processes invalid proofs (returns appropriate error)
-    // - The error handling system works as expected
-    // - The service integrates correctly with its dependencies (wallet, RPC)
-
-    // What We're Not Testing:
-    // - Actual cryptographic verification (that would require valid proof/verification key pairs)
-    // - Network interactions with the blockchain
-    // - Real wallet transactions
-
-    //mock for verification-related functions
-    mock! {
-        VerificationSystem {
-            async fn mock_verify_proof(
-                verification_data: VerificationData,
-                rpc_url: &str,
-                wallet: &LocalWallet,
-            ) -> Result<Option<String>, Box<dyn std::error::Error>>;
-        }
-    }
+    use base64::{engine::general_purpose, Engine as _};
 
     #[actix_web::test]
     async fn test_verify_handler() {
         dotenv().ok();
 
-        let rpc_url = env::var("RPC_URL").unwrap_or_else(|_| "http://localhost:8545".to_string());
-        let private_key = env::var("PRIVATE_KEY").unwrap_or_else(|_| {
-            "0000000000000000000000000000000000000000000000000000000000000001".to_string()
-        });
+        let rpc_url = env::var("RPC_URL").expect("RPC_URL must be set");
+        let private_key = env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set");
 
         let wallet = LocalWallet::from_str(&private_key)
             .expect("Failed to create wallet")
             .with_chain_id(17000u64);
-
-        let proof = vec![1, 2, 3, 4]; // replace with valid test proof
-        let verification_key = vec![5, 6, 7, 8]; // replace with valid test verification key
-        let pub_input = vec![9, 10]; // replace with valid test public input
-
-        let req = VerificationRequest {
-            proof: proof.clone(),
-            verification_key: verification_key.clone(),
-            pub_input: pub_input.clone(),
-        };
 
         let app = test::init_service(
             App::new()
@@ -173,6 +136,20 @@ mod tests {
                 .service(web::resource("/verify").route(web::post().to(verify_handler))),
         )
         .await;
+
+        let proof = general_purpose::STANDARD.decode("A3e/b1SanJb3069LEXBj6SZxSYGoDVuZW2hTiQqMOu8C1u3rlWQH0tnInidCM+3HL5qCrt98x/dJUDAv/3bYaBuTl4T7GKiH0s0nJWAs/PwJYEAl+2VOXdSxccwrFzyFBumH4iBPXio2L8gRBuk4NZoO28g2YtvdT4wdXBI0OloKJyJDCQ7pX9LN2WmJOuaSiBIQUU/0lqZ2xuN4vzYgkQbUIm3dg6JjbDh40gJGJnsOSut/bjuIUykYTbC5YOE+Aj43hxm+0xJDd3FniP5KBTHaZWJq3uYUY42PkEMQ+RQfqqIsbkKdLcTjnhb6PmzR1wvuqSfGhsZbShoENbHqhQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                .expect("Failed to decode proof");
+
+        let verification_key = general_purpose::STANDARD.decode("LTvfOdMDcumyiukLEt0OqatMCrUdGyPv1auq9e4gjC8i43HAlNYg1eSDtDUhet21s0sJVLYgRFp3kknhdpZ9ECa2HBiUu/9QBP2JTi4s7nfrVOndl28AJPbdVlvKkn0eKHP9ROLwigfgVEuRZcB6Zw14eYVo/FN1JTIQKSX6kTQu5wy7l1YQZwe1Rhqv+759f8pPFe2a28a1UCchM0RqnyYLy71gG3IF1Dbyrz/Z+oWqzvun2fdAVoeXT80m0HFJD0qDoVffmXc7ZGHfWQvAfebysaZIcLpDQQFOTaxb3E0QiGiH5dwW+jdUzgq9d88bLL7mOGsTwoEsHp3m5SwL8i8XhP9RxDViZhk26606HKFxJTVVvSU1UUnj4uvtxM01H3MgBPtc5FKhqbkgj3NDC/tB72C6cwlT7WhpMCTQp5ET4VwLA7Og0UMphGoKfy5PV6YDLqNZBXEFEIsxH79ebBf8MkNl7/9z/rqXXUOfWFA+VvCnHTsdcZJXeujYyG2pBWNy6SvMQTI5TvACciNXbyO6+A4+X1sz0E/R8Uz/IgAdnJlbrPW0cLckssE7KvKMutNDaRhKUwLQmXPVtHwPvxC+mxKHFiByu+0l0cTXC9iFX4Zn7/DDxNFmfehlP/Q4FFI0Xd26aYIRNf30LJ+XoILSuDFGL/NAJTNZo/RADLIUJLGGIGg5SpM4BaCAP94Yo9SPoW/R/dR12wW/zXkNsgWxFVihwewNY81XAb0VDouEgVe8N60xJnOFiBJ9rPZEAAAAAhTTv33YX8is/rbX+Ean1pq6TX4nQLZ7pW0b+cguIgE+BdyqgFwgPmbqxy3u1ALT4QisNgTzCS9qYxcyMRKxGR0WKg42If7GjD7ia2ea1DumFhp2VvRYwMvcCajv7u5IwCmgpFezLb2hddCp8pJlVDoZC+ueGOIx1AdI9mQ3LTUyAAAAACXTh11m9U0volPV946AzfZbB6KFKMRWmh5UZ75+y5JGI/LtleSEvwKfgQZhmWbfupyFF6PNhe7/9wl0mlOlAbknsYOYcXK8Gk/TyJNsmQ+tSRdG9PVEW9h7iJgWkvNPigj28cTT65Q0jetQNb/qHT3Osg1bGLqLAY8FB+gIAlYcDAZXQNWll/qaxq4QEPKjwQNws3Dr0WQ4h5K1TyR+Yu0Wf5onlGSdROzxG03rPknwF0yguF/r8HIaY1CHAxvXliXKgW0hieGfn3l/4Ynf/HUhm9lkVw1z+tclIyR4p5EiDhrgCPvaJUoUVHOjnzSrVo3HZZXg3Q/ZccLb102NoHE=")
+                .expect("Failed to decode verification key");
+
+        let pub_input = vec![18u8];
+
+        let req = VerificationRequest {
+            proof,
+            verification_key,
+            pub_input,
+        };
 
         let resp = test::call_service(
             &app,
@@ -183,24 +160,11 @@ mod tests {
         )
         .await;
 
-        // Check response
         assert!(resp.status().is_success());
+
         let body: VerificationResponse = test::read_body_json(resp).await;
-
-        // For debugging (run test with: cargo test -- --nocapture)
-        eprintln!("Response body: {:?}", body);
-        eprintln!("Proof length: {}", proof.len());
-        eprintln!("Verification key length: {}", verification_key.len());
-        eprintln!("Public input length: {}", pub_input.len());
-
-        // Test can be adjusted based on expected behavior:
-        // If we expect verification to fail with test data:
-        assert!(!body.success);
-        assert!(body.error.is_some());
-        assert_eq!(body.error.clone().unwrap(), "Invalid proof");
-
-        // If we expect verification to succeed with test data:
-        // assert!(body.success);
-        // assert!(body.error.is_none());
+        println!("{:?}", body);
+        assert!(body.success);
+        assert!(body.error.is_none());
     }
 }
